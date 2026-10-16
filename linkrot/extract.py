@@ -50,11 +50,57 @@ def _strip_code(text: str) -> str:
     return _INLINE_CODE_RE.sub(_blank, text)
 
 
+def _skip_title_to_paren(text: str, start: int) -> int | None:
+    """Return the offset of the ``)`` closing an inline link, or None.
+
+    Starting just after the URL, skips whitespace and one optional
+    ``"title"`` / ``'title'`` / ``(title)``. Gives up at a blank line or
+    on any other junk, in which case the caller rejects the inline link
+    (the bare-URL pass may still pick the URL up on its own).
+    """
+    i = start
+    quote: str | None = None
+    paren_depth = 0
+    seen_title = False
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if quote is not None:
+            if ch == quote:
+                quote = None
+                seen_title = True
+        elif ch in "\"'":
+            if seen_title or paren_depth:
+                return None  # stray quote: not a valid title
+            quote = ch
+        elif ch == "(":
+            if seen_title:
+                return None
+            paren_depth += 1
+            seen_title = True
+        elif ch == ")":
+            if paren_depth:
+                paren_depth -= 1
+            else:
+                return i
+        elif ch == "\n":
+            # A blank line cannot appear inside an inline link.
+            if text[i + 1 : i + 2] == "\n":
+                return None
+        elif ch not in " \t" and not seen_title and not paren_depth:
+            # Junk between the URL and the closing paren.
+            return None
+        i += 1
+    return None
+
+
 def _balanced_url_paren(text: str, start: int) -> tuple[str | None, int]:
     """Read a URL starting at ``start`` up to the closing paren.
 
     Handles one level of nested parentheses (e.g. Wikipedia URLs) and
-    skips a trailing ``"title"``. Returns (url, end_offset_of_closing_paren).
+    skips an optional trailing ``"title"`` / ``'title'`` / ``(title)``.
+    Returns (url, end_offset_of_closing_paren); (None, start) when no
+    closing paren can be found.
     """
     depth = 0
     end = start
@@ -72,10 +118,17 @@ def _balanced_url_paren(text: str, start: int) -> tuple[str | None, int]:
     raw = text[start:end].strip()
     if not raw:
         return None, start
-    # Split off an optional "title".
-    raw = raw.split(None, 1)[0]
     url = raw.strip("<>")
-    return (url or None), end
+    if not url:
+        return None, start
+    if end < len(text) and text[end] == ")":
+        return url, end
+    # Stopped at whitespace/quote: an optional title may follow before
+    # the closing paren.
+    closing = _skip_title_to_paren(text, end)
+    if closing is None:
+        return None, start
+    return url, closing
 
 
 def extract_links_from_text(text: str) -> list[Link]:

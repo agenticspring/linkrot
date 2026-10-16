@@ -41,7 +41,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--quiet", action="store_true",
                         help="print only the report, no progress info")
     parser.add_argument("--version", action="version", version="linkrot 1.0.0")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.timeout <= 0:
+        parser.error("--timeout must be a positive number of seconds")
+    return args
 
 
 def _matches_any(patterns: list[str], relpath: str, basename: str) -> bool:
@@ -49,7 +52,9 @@ def _matches_any(patterns: list[str], relpath: str, basename: str) -> bool:
         if fnmatch.fnmatch(relpath, pattern) or fnmatch.fnmatch(basename, pattern):
             return True
         # A trailing "/*" should also exclude the directory itself and deeper paths.
-        if pattern.endswith("/*") and relpath.startswith(pattern[:-1]):
+        if pattern.endswith("/*") and (
+            relpath == pattern[:-2] or relpath.startswith(pattern[:-1])
+        ):
             return True
     return False
 
@@ -90,9 +95,9 @@ def _emit(message: str, report_path: str | None) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    url_exclusions = [re.compile(pattern) for pattern in args.exclude_url]
 
     try:
+        url_exclusions = [re.compile(pattern) for pattern in args.exclude_url]
         start = time.time()
         files = collect_files(args.path, args.include, args.exclude)
         if not args.quiet:

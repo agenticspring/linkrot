@@ -17,6 +17,34 @@ class ExtractTest(unittest.TestCase):
         links = extract_links_from_text('[Docs](https://example.com "the docs")')
         self.assertEqual(len(links), 1)
         self.assertEqual(links[0].url, "https://example.com")
+        self.assertEqual(links[0].kind, "inline")
+
+    def test_inline_link_with_single_quote_title(self):
+        links = extract_links_from_text("[Docs](https://example.com 'the docs')")
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0].url, "https://example.com")
+        self.assertEqual(links[0].kind, "inline")
+
+    def test_inline_link_with_paren_title(self):
+        links = extract_links_from_text("[Docs](https://example.com (the docs))")
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0].url, "https://example.com")
+        self.assertEqual(links[0].kind, "inline")
+
+    def test_inline_link_with_title_and_parens_in_url(self):
+        links = extract_links_from_text(
+            '[Wiki](https://en.wikipedia.org/wiki/Python_(programming_language) "Python")'
+        )
+        self.assertEqual(len(links), 1)
+        self.assertTrue(links[0].url.endswith("Python_(programming_language)"))
+        self.assertEqual(links[0].kind, "inline")
+
+    def test_inline_link_unterminated_title_rejected(self):
+        # No closing paren: not an inline link; the bare URL is still found.
+        links = extract_links_from_text('[Docs](https://example.com "oops\n')
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0].url, "https://example.com")
+        self.assertEqual(links[0].kind, "bare")
 
     def test_inline_link_with_parens_in_url(self):
         links = extract_links_from_text(
